@@ -16,12 +16,24 @@ from myapp.model.entity.DataExamExercisesEntity import db
 
 
 class MLGeneracionRankingService:
-    def __init__(self, model_path=r"F:\proyectos\python\ws_wa_exam\model\generation_ranking_model.pkl"):
-        self.model_path = model_path
+    def __init__(self, model_path : str = None):
+        if model_path:
+            self.model_path = model_path
+        else:
+            # __file__ -> .../myapp/service/MLGeneracionRankingService.py
+            svc_dir = os.path.dirname(os.path.abspath(__file__))
+            # Sube dos niveles para llegar a la raíz del proyecto (/app)
+            project_root = os.path.dirname(os.path.dirname(svc_dir))
+            # Apunta al modelo dentro de model/
+            self.model_path = os.path.join(project_root, 'model', 'generation_ranking_model.pkl')
+
         self.model = None
+
         if os.path.exists(self.model_path):
             self.model = joblib.load(self.model_path)
             print("Modelo de generación y ranking cargado desde:", self.model_path)
+        else:
+            raise FileNotFoundError(f"No se encontró el modelo en: {self.model_path}")
     
     def train_model(self):
         """
