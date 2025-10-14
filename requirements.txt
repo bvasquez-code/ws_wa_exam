@@ -7,4 +7,4 @@ pandas
 numpy
 scikit-learn
 joblib
-gunicorn
+gunicorn>=21.2,<22

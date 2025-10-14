@@ -7,15 +7,13 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copia el resto del código de tu app
+# Copia tu app
 COPY . .
 
-# Expone el puerto (por defecto Flask usa el 5000)
+# Railway te da un puerto en $PORT
 EXPOSE 5000
-
-# Evita buffering en los logs
 ENV PYTHONUNBUFFERED=1
 
-# Arranca con Gunicorn en modo producción: 
-# "app" es el módulo y "app" la instancia de Flask dentro de él.
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app:app"]
+# WSGI target "app:app" = archivo app.py (o package app/__init__.py) exponiendo una variable Flask llamada "app"
+# Usa $PORT si existe; si no, 5000
+CMD ["sh", "-c", "exec gunicorn --bind 0.0.0.0:${PORT:-5000} app:app"]
