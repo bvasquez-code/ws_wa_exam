@@ -161,12 +161,14 @@ class MLDiagnosticoService:
                 AVG(SolvedCorrectly) AS correct_rate,
                 COUNT(*) AS attempts
             FROM data_exam_results
-            WHERE StudentID = :student_id
-              AND NumberAttempt IS NOT NULL
-              AND Status = 'A'
+            WHERE StudentID = %s
+            AND NumberAttempt IS NOT NULL
+            AND Status = 'A'
             GROUP BY TopicID
         """
-        df = pd.read_sql(query, con=db.engine, params={"student_id": student_id})
+
+        # OJO: aquí usamos params como lista, en el orden de los %s
+        df = pd.read_sql(query, con=db.engine, params=[student_id])
 
         if df.empty:
             return {
