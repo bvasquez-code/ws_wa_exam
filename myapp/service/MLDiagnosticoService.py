@@ -168,7 +168,7 @@ class MLDiagnosticoService:
         """
 
         # OJO: aquí usamos params como lista, en el orden de los %s
-        df = pd.read_sql(query, con=db.engine, params=[student_id])
+        df = pd.read_sql(query, con=db.engine, params=(student_id,))
 
         if df.empty:
             return {
