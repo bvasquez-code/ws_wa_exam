@@ -193,41 +193,167 @@ class MLGeneracionRankingService:
             "results": exam_exercises
         }
 
-    def generate_entry_exam(self, student_id: str) -> dict:
+    def _ensure_model_loaded(self):
         """
-        Genera examen de entrada para alumno nuevo:
-        5 preguntas por curso, temas distintos, basado en predicted_utility.
+        Carga el modelo en memoria si aún no está cargado.
+        Lanza excepción si no existe el archivo del modelo.
         """
         if self.model is None:
             if os.path.exists(self.model_path):
                 self.model = joblib.load(self.model_path)
+                print("Modelo de generación y ranking cargado desde:", self.model_path)
             else:
                 raise Exception("Modelo de generación y ranking no encontrado. Entrénalo primero.")
 
+    @staticmethod
+    def _compute_course_quotas(courses, total_questions: int = 20) -> dict:
+        """
+        Calcula cuántas preguntas le corresponden a cada curso,
+        con las siguientes reglas:
+
+        - Máximo total_questions (20) preguntas en el examen.
+        - Si hay más de total_questions cursos, se seleccionan aleatoriamente
+          total_questions cursos y a cada uno se le asigna 1 pregunta.
+        - Si hay 1 curso: se le asignan hasta total_questions preguntas.
+        - Si hay entre 2 y total_questions cursos:
+            base = total_questions // num_courses
+            remainder = total_questions % num_courses
+            A los primeros 'remainder' cursos se les asigna base + 1,
+            al resto base. La suma total es exactamente total_questions.
+        """
+        if not courses:
+            return {}
+
+        # Si hay más cursos que preguntas máximas, limitar a un subset aleatorio
+        if len(courses) > total_questions:
+            courses = random.sample(courses, total_questions)
+
+        num_courses = len(courses)
+        quotas = {}
+
+        if num_courses == 1:
+            # Un solo curso: hasta total_questions preguntas
+            quotas[courses[0]] = total_questions
+            return quotas
+
+        # Para 2 <= num_courses <= total_questions
+        base = total_questions // num_courses
+        remainder = total_questions % num_courses
+
+        for idx, course in enumerate(courses):
+            if idx < remainder:
+                quotas[course] = base + 1
+            else:
+                quotas[course] = base
+
+        return quotas
+
+    @staticmethod
+    def _recalculate_points_for_exam(selected: list, total_points: int = 20) -> None:
+        """
+        Recalcula los puntos de cada pregunta de forma que:
+        - Todos sean enteros.
+        - La suma total sea total_points (20).
+        Modifica la lista 'selected' in-place, asignando la clave "Points".
+        """
+        n = len(selected)
+        if n == 0:
+            return
+
+        base = total_points // n
+        remainder = total_points % n
+
+        # Asignar base + 1 a las primeras 'remainder' preguntas,
+        # y base al resto.
+        for idx, item in enumerate(selected):
+            if idx < remainder:
+                item["Points"] = base + 1
+            else:
+                item["Points"] = base
+
+    def generate_entry_exam(self, student_id: str) -> dict:
+        """
+        Genera examen de entrada para alumno nuevo:
+        - Máximo 20 preguntas en total.
+        - Distribución de preguntas por curso según número de cursos:
+            * 1 curso  -> hasta 20 preguntas de ese curso.
+            * 2..20    -> se reparten exactamente 20 preguntas entre los cursos.
+            * >20      -> se eligen aleatoriamente 20 cursos, 1 pregunta por curso.
+        - Dentro de cada curso:
+            * Se eligen temas aleatorios según la cuota de preguntas.
+            * Por cada tema, se selecciona el ejercicio con mayor predicted_utility.
+        - Los puntos se recalculan para que el examen completo valga 20 puntos.
+        """
+        # 1) Asegurar modelo en memoria
+        self._ensure_model_loaded()
+
+        # 2) Obtener cursos y calcular cuotas de preguntas por curso
         courses = DataTopicsRepository.get_all_courses()
+        quotas = self._compute_course_quotas(courses, total_questions=20)
+
+        if not quotas:
+            return {"message": "No hay cursos configurados para generar examen de entrada."}
+
         selected = []
-        for course in courses:
+
+        # 3) Para cada curso, seleccionar preguntas según la cuota
+        for course, quota in quotas.items():
+            if quota <= 0:
+                continue
+
             topic_ids = DataTopicsRepository.get_topic_ids_by_course(course)
-            sampled = random.sample(topic_ids, min(5, len(topic_ids)))
-            for tid in sampled:
+            if not topic_ids:
+                continue
+
+            # Elegir hasta 'quota' temas aleatorios de este curso
+            num_topics = min(quota, len(topic_ids))
+            sampled_topics = random.sample(topic_ids, num_topics)
+
+            for tid in sampled_topics:
                 exs = DataExercisesRepository.get_exercises_by_topics([tid])
                 if not exs:
                     continue
-                df = pd.DataFrame(exs, columns=["ExerciseID","ExerciseCod","TopicID","Level","Points","topic_name"])
-                df['NumberAttempt'] = 0
-                df['predicted_utility'] = self.model.predict(df[['Points','Level','NumberAttempt']])
-                top = df.sort_values('predicted_utility', ascending=False).iloc[0]
+
+                # Se asume que exs es una lista de tuplas o dicts compatibles con estas columnas
+                df = pd.DataFrame(
+                    exs,
+                    columns=["ExerciseID", "ExerciseCod", "TopicID", "Level", "Points", "topic_name"]
+                )
+
+                # NumberAttempt = 0 para examen de entrada
+                df["NumberAttempt"] = 0
+
+                # Predecir utilidad del ejercicio según el modelo
+                # (se usan los puntos originales, nivel y número de intentos = 0)
+                df["predicted_utility"] = self.model.predict(
+                    df[["Points", "Level", "NumberAttempt"]]
+                )
+
+                # Elegir el ejercicio con mayor predicted_utility
+                top = df.sort_values("predicted_utility", ascending=False).iloc[0]
+
                 selected.append({
                     "ExerciseCod": top["ExerciseCod"],
                     "ExerciseID": int(top["ExerciseID"]),
                     "Level": int(top["Level"]),
+                    # Points se recalcularán luego, pero guardamos el original por si se requiere
                     "Points": float(top["Points"]),
                     "TopicID": int(top["TopicID"]),
                     "predicted_utility": float(top["predicted_utility"]),
                     "topic_name": top["topic_name"]
                 })
+
+        # Si no se seleccionó ningún ejercicio
         if not selected:
             return {"message": "No se encontraron ejercicios para generar examen de entrada."}
+
+        # 4) Chocolatear (mezclar aleatoriamente las preguntas)
+        random.shuffle(selected)
+
+        # 5) Recalcular los puntos para que el examen valga 20 en total
+        self._recalculate_points_for_exam(selected, total_points=20)
+
+        # 6) Crear examen en BD
         exam_id = ExamRepository.generate_exam_id()
         ExamRepository.insert_exam({
             "ExamID": exam_id,
@@ -237,13 +363,26 @@ class MLGeneracionRankingService:
             "DurationMinutes": 60,
             "CreationUser": "system"
         })
+
+        # 7) Insertar ejercicios del examen con los puntos ya recalculados
         ExamRepository.insert_exam_exercises([
-            {"ExamID":exam_id,"ExerciseID":it["ExerciseID"],"TopicID":it["TopicID"],"DifficultyLevel":"Medium","Points":it["Points"],"CreationUser":"system"}
+            {
+                "ExamID": exam_id,
+                "ExerciseID": it["ExerciseID"],
+                "TopicID": it["TopicID"],
+                "DifficultyLevel": "Medium",
+                "Points": it["Points"],       # puntos ajustados para sumar 20
+                "CreationUser": "system"
+            }
             for it in selected
         ])
+
+        # 8) Registrar intento inicial del alumno
         DataStudentExamHistoryRepository.insert_exam_attempt(student_id, exam_id, 1, 0)
+
+        # 9) Respuesta
         return {
-            "ExamID": exam_id, 
-            "StudentID": student_id, 
+            "ExamID": exam_id,
+            "StudentID": student_id,
             "results": selected
-            }
+        }
