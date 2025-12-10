@@ -81,6 +81,7 @@ class MLDiagnosticoService:
             FROM data_exam_results
             WHERE NumberAttempt IS NOT NULL
               AND Status = 'A'
+              AND TopicID IN ( SELECT dt.TopicID FROM data_topics dt WHERE dt.Status = 'A' )
             GROUP BY StudentID, TopicID
         """
         df = pd.read_sql(query, con=db.engine)
