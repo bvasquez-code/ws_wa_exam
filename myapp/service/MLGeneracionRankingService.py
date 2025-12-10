@@ -475,32 +475,37 @@ class MLGeneracionRankingService:
         return self._persist_entry_exam(student_id, selected, "Diagnóstico inicial")
 
     def _generate_entry_exam_personalized(self, student_id: str) -> dict:
-        """
-        Camino 2: Alumno con historial suficiente.
-        Usa el modelo de diagnóstico para encontrar temas débiles y el modelo de ranking
-        para seleccionar las mejores preguntas de esos temas.
-        """
         diag_service = MLDiagnosticoService()
         diag_result = diag_service.analyze_student_performance(student_id)
 
         weak_topics = diag_result.get("weak_topics", []) or []
+        detailed = diag_result.get("detailed", []) or []
 
-        # Si no hay débiles explícitos, usamos todos los temas del alumno como fallback
-        if not weak_topics:
-            detailed = diag_result.get("detailed", []) or []
-            weak_topics = [row["TopicID"] for row in detailed]
+        # Obtener todos los TopicID activos desde data_topics
+        active_topic_ids = set(DataTopicsRepository.get_active_topic_ids())  # asegúrate de tener este método o uno similar
 
-        # Si aun así no hay topics, usamos el camino inicial como fallback
+        # Filtrar solo topics activos
+        if weak_topics:
+            weak_topics = [t for t in weak_topics if t in active_topic_ids]
+
+        # Si no quedaron débiles, usar todos los temas del detalle, pero solo activos
         if not weak_topics:
+            weak_topics = [
+                row["TopicID"] for row in detailed
+                if row["TopicID"] in active_topic_ids
+            ]
+
+        if not weak_topics:
+            # Fallback: usar el flujo inicial
             return self._generate_entry_exam_initial(student_id)
 
         selected = self._select_exercises_for_topics(weak_topics, limit=20)
-
         return self._persist_entry_exam(
             student_id,
             selected,
             "Diagnóstico personalizado según desempeño"
         )
+
 
     def generate_entry_exam(self, student_id: str) -> dict:
         """

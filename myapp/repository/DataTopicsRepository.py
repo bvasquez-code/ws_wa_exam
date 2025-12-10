@@ -14,3 +14,9 @@ class DataTopicsRepository:
         sql = text("SELECT TopicID FROM data_topics WHERE Course = :course and Status = 'A'")
         with db.engine.connect() as conn:
             return [row["TopicID"] for row in conn.execute(sql, {"course": course}).mappings().all()]
+
+    @staticmethod
+    def get_active_topic_ids() -> list[int]:
+        sql = text("SELECT TopicID FROM data_topics WHERE Status = 'A'")
+        with db.engine.connect() as conn:
+            return [row["TopicID"] for row in conn.execute(sql).mappings().all()]
