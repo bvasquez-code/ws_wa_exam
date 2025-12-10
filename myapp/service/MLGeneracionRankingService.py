@@ -393,7 +393,7 @@ class MLGeneracionRankingService:
         """
         exercises = DataExercisesRepository.get_exercises_by_topics(topics)
         if not exercises:
-            return {"message": "No se encontraron ejercicios para los topics proporcionados."}
+            return {"message": f"No se encontraron ejercicios para los topics proporcionados: {', '.join(topics)}."}
 
         df_exercises = pd.DataFrame(
             exercises,
