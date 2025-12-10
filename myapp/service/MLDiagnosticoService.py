@@ -87,7 +87,7 @@ class MLDiagnosticoService:
         df = pd.read_sql(query, con=db.engine)
 
         if df.empty:
-            return {"message": "No se encontraron datos para entrenar el modelo diagnóstico.", "saved": False}
+            return {"message": "No se encontraron datos para entrenar el modelo diagnóstico comunicarse con soporte.", "saved": False}
 
         # Generar etiqueta de nivel en función del avg_points
         df['label'] = df['avg_points'].apply(self._label_from_avg_points)
