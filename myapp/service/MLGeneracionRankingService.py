@@ -521,7 +521,7 @@ class MLGeneracionRankingService:
         # Aseguramos tener el modelo de ranking disponible
         self._ensure_model_loaded()
 
-        MIN_HISTORY = 10  # puedes ajustar este umbral según lo que consideres "historial suficiente"
+        MIN_HISTORY = 40  # puedes ajustar este umbral según lo que consideres "historial suficiente"
         history_count = self._get_student_history_count(student_id)
 
         if history_count < MIN_HISTORY:
