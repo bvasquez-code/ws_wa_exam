@@ -528,5 +528,10 @@ class MLGeneracionRankingService:
             # Alumno "nuevo" -> examen diagnóstico general
             return self._generate_entry_exam_initial(student_id)
         else:
-            # Alumno con historial -> examen basado en debilidades + ranking
-            return self._generate_entry_exam_personalized(student_id)
+            # Alumno con historial -> 70% personalizado, 30% general
+            p = random.random()  # float en [0.0, 1.0)
+
+            if p < 0.70:
+                return self._generate_entry_exam_personalized(student_id)
+            else:
+                return self._generate_entry_exam_initial(student_id)
