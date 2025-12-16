@@ -499,7 +499,7 @@ class MLGeneracionRankingService:
             # Fallback: usar el flujo inicial
             return self._generate_entry_exam_initial(student_id)
 
-        selected = self._select_exercises_for_topics(weak_topics, limit=20)
+        selected = self._select_exercises_for_topics(weak_topics, limit=10)
         return self._persist_entry_exam(
             student_id,
             selected,
